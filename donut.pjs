@@ -1,0 +1,496 @@
+/**********************************************************************
+TERMS OF USE - DONUT - Radial Navigator
+Open source under the BSD License.
+copyright (c) 2009 by Michael Aufreiter
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+   * Redistributions of source code must retain the above copyright
+notice, this list of conditions and the following disclaimer.
+   * Redistributions in binary form must reproduce the above
+copyright notice, this list of conditions and the following disclaimer
+in the documentation and/or other materials provided with the
+distribution.
+   * Neither the name of the author nor the names of contributors may
+be used to endorse or promote products derived from this software
+without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+*****************************************/
+
+import("Tween.lib");
+
+color[] colors = new color[12];
+
+colors[0] = color(171, 199, 49);
+colors[1] = color(162, 195, 85);
+colors[2] = color(154, 191, 123);
+colors[3] = color(147, 186, 161);
+colors[4] = color(141, 181, 200);
+colors[5] = color(134, 162, 169);
+colors[6] = color(128, 142, 137);
+colors[7] = color(122, 122, 104);
+colors[8] = color(177, 102, 73);
+colors[9] = color(131, 127, 67);
+colors[10] = color(157, 175, 55);
+
+
+// alternative colors
+// ****************************************
+// colors[0] = color(234, 43, 95);
+// colors[1] = color(166, 192, 59);
+// colors[2] = color(89, 148, 33);
+// colors[3] = color(54, 149, 104);
+// colors[4] = color(26, 97, 154);
+// 
+// colors[5] = color(234, 43, 95);
+// colors[6] = color(166, 192, 59);
+// colors[7] = color(89, 148, 33);
+// colors[8] = color(54, 149, 104);
+// colors[9] = color(26, 97, 154);
+// colors[10] = color(234, 43, 95);
+
+color LABEL_COLOR = color(150);
+color HIGHLIGHTED_LABEL_COLOR = color(55);
+color DONUT_BACKGROUND = color(255); // color(28,35,34);
+color BACKGROUND = color(244);// color(21,27,27);
+
+// global constants
+float STROKE_WEIGHT_COLLAPSED = 50;
+float STROKE_WEIGHT_EXPANDED = 60;
+float OUTER_BORDER = 5;
+float EPSILON = TWO_PI/100; // tolerance for applying angleAdjustment
+
+public class DonutSlice {
+  String id = "";
+  String name = "";
+  
+  boolean hovering = false;
+  
+  DonutSegment seg;
+  
+  float angleStart;
+  float angleStop;
+  
+  public DonutSlice(String id, String name, DonutSegment seg) {
+		this.id = id;
+		this.name = name;
+		this.seg = seg;
+	}
+	
+	public void update() {
+	  // patched by DonutSegment#update() for now
+	}
+	
+	public void draw() {
+		float radius = seg.donut.radius;
+    stroke(255, 255, 255, 100);
+    strokeWeight(1);
+    
+    // TODO: if (this===seg.slices[seg.slices.size()-1])
+    line(this.seg.donut.x+cos(this.angleStop)*(radius-seg.breadth/2), this.seg.donut.y+sin(this.angleStop)*(radius-seg.breadth/2), this.seg.donut.x+cos(this.angleStop)*(radius+seg.breadth/2), this.seg.donut.y+sin(this.angleStop)*(radius+seg.breadth/2));
+    
+    // highlight selectedSlice
+    if (this.hovering) {
+      curContext.lineCap = "butt"; // processing.js patch!
+      noFill();
+      stroke(0,0,0,20);
+      strokeWeight(seg.breadth);
+      arc(seg.donut.x, seg.donut.y, seg.donut.radius*2, seg.donut.radius*2, angleStart, angleStop);
+    }
+    
+    noStroke();
+		strokeWeight(0); // reset
+		
+    if (seg.donut.selectedSegment===this.seg && !seg.fan.isPlaying()) {
+     float theta = ((this.angleStart+this.angleStop) / 2)%TWO_PI+0.05;
+     float angle = theta;
+     
+     curContext.font = "12px Century Gothic";
+     curContext.textAlign = "left";
+     if (theta > PI/2 && theta < (PI+PI/2)-0.05) {
+       fWidth = curContext.measureText(this.name).width;
+       angle -= 0.05;
+     } else
+       fWidth = 0;
+    
+     pushMatrix();
+     translate(seg.donut.x, seg.donut.y);
+     rotate(angle);
+     pushMatrix();
+     translate(seg.donut.radius+50+fWidth,0);
+     if (this.hovering)
+       fill(HIGHLIGHTED_LABEL_COLOR);
+     else
+       fill(LABEL_COLOR);
+
+     pushMatrix();
+     if (theta > PI/2 && theta < (PI+PI/2)+0.04) {
+       rotate(PI);
+     }
+     curContext.fillText(this.name, 0, 0);
+     popMatrix();
+     popMatrix();
+     popMatrix();
+    }
+	}
+	
+	public boolean checkSelected() {
+    float disX = mouseX - seg.donut.x;
+    float disY = mouseY - seg.donut.y;
+    
+    // calculate polar coordinates
+    float r = Math.sqrt(sq(disX)+sq(disY));
+    float angle = atan2(disY, disX);
+    if (angle<0) angle = TWO_PI+angle; // shift to 0-TWO_PI interval
+    
+    float start = this.angleStart % TWO_PI;
+    float stop = this.angleStop % TWO_PI;
+    
+    // TODO: add such a workaround for donuts that have just one slice
+    // if (seg.donut.numSlices()==1) {
+    //   if (r >= this.donut.radius && r <= this.donut.radius) {
+    //     
+    //   }
+    // }
+    
+    if (r >= seg.donut.radius-seg.breadth/2 && r <= seg.donut.radius+seg.breadth/2 && 
+        ((angle>start && angle<stop) || (start>stop && (angle > start || angle < stop)) )) {
+      
+      seg.donut.setSelectedSlice(this);
+      // return true
+      hovering = true;
+    } else {
+      hovering = false;
+    }
+  }
+}
+
+
+
+
+public class DonutSegment {
+  String label;
+  
+  float weight;
+  float angleStart;
+  float angleStop;
+  float breadth = STROKE_WEIGHT_COLLAPSED;
+  Donut donut;
+  
+  ArrayList slices;
+  color col;
+  Tween fan;
+  Tween breadthTween;
+  
+  public DonutSegment(String label, Donut donut) {
+    this.label = label;
+    this.donut = donut;
+    this.slices = new ArrayList();
+    this.weight = 1.0;
+    this.fan = new Tween(this, "weight", Tween.strongEaseInOut, 1.0, 3.0, 0.8);
+    this.breadthTween = new Tween(this, "breadth", Tween.strongEaseInOut, STROKE_WEIGHT_COLLAPSED, STROKE_WEIGHT_EXPANDED, 0.8);
+  }
+  
+  // the resulting share of the segment (in percent)
+  public float share() {
+    return (slices.size()/donut.totalSlices()); // the share of total slices
+  }
+  
+  // the weighted share of the segment in respect of the segment's weight (in percent)
+  public float weightedShare() {
+    return share()*weight/donut.totalWeight();
+  }
+  
+  // the resulting size of the segment (in radiants)
+  public float amount() {
+    return (TWO_PI)*weightedShare();
+  }
+  
+  public void update() {
+    // update local angleStart, angleStop using the shared angleOffset
+    this.angleStart = donut.angleOffset;
+    
+    float amount = this.amount();
+    float tmp = this.angleStart;
+    for (int i=0; i<slices.size(); i++) {
+      // TODO: delegate the work to DonutSlice#update() -> slices[i].update();
+      slices[i].angleStart = tmp;
+      slices[i].angleStop = tmp+=amount/slices.size();
+    }
+    
+    this.angleStop = donut.angleOffset+=amount;
+  }
+  
+  public void draw() {
+    
+    // processing.js patch!
+    curContext.lineCap = "butt";
+    
+		fill(DONUT_BACKGROUND);
+    noStroke();
+    
+    strokeWeight(this.breadth+2*OUTER_BORDER);
+    stroke(DONUT_BACKGROUND);
+    noFill();
+    arc(donut.x, donut.y, (donut.radius)*2, (donut.radius)*2, this.angleStart, this.angleStop);
+    
+    fill(0,0,0,0);
+    stroke(col);
+    strokeWeight(this.breadth);
+    
+    arc(donut.x, donut.y, donut.radius*2, donut.radius*2, this.angleStart, this.angleStop);
+    
+    curContext.textAlign = "center";
+    if (this===donut.selectedSegment) {
+      fill(col);
+      curContext.font = "40px Century Gothic";
+      curContext.fillText(this.slices.size(), donut.x, donut.y-40);
+
+      curContext.font = "14px Century Gothic";
+      curContext.fillText("Options", donut.x, donut.y-20);
+
+      curContext.font = "18px Century Gothic";
+      curContext.fillText(this.label, donut.x, donut.y+30);
+
+      noStroke();
+      ellipse(donut.x, donut.y, 14, 14);
+    }
+
+    // draw slices
+    for (int i=0; i<slices.size(); i++) {
+      slices[i].draw();
+    }
+  }
+  
+  // start expanding tween
+  public void expand() {
+    this.fan.continueTo(3.0, 0.8);
+    this.breadthTween.continueTo(STROKE_WEIGHT_EXPANDED, 0.8);
+  }
+  
+  // start contracting tween
+  public void contract() {
+    this.fan.continueTo(1.0, 0.8);
+    this.breadthTween.continueTo(STROKE_WEIGHT_COLLAPSED, 0.8);
+  }
+  
+  public void addSlice(DonutSlice s) {
+    slices.add(s);
+  }
+}
+
+public class Donut {
+  float x;
+  float y;
+  float radius;
+  
+  float angleOffset = 0.0;
+  ArrayList segments;
+  int colorCount = 0;
+  DonutSegment selectedSegment = null;
+  DonutSlice selectedSlice = null;
+  float angleAdjustment = 0.0;
+  boolean opened = true;
+  
+  public Donut(float x, float y) {
+    this.x = x;
+    this.y = y;
+    this.radius = 120;
+    this.segments = new ArrayList();    
+  }
+  
+  public setSelectedSlice(DonutSlice s) {
+    this.selectedSlice = s;
+    
+    if (s.seg != this.selectedSegment) {
+      if (this.selectedSegment!=null)
+
+      if (this.selectedSegment!=null) {
+        this.selectedSegment.contract();
+      }
+      
+      this.selectedSegment = s.seg;
+      this.selectedSegment.expand();
+    }
+  }
+    
+  public void update() {
+    this.angleAdjustment = 0.0;
+    this.angleOffset = 0.0;
+    
+    
+    if (selectedSlice != null) {
+      float targetAngle = (selectedSlice.angleStart+selectedSlice.angleStop) / 2;
+    }
+
+    // perform tweens first
+    for (int i=0; i < segments.size(); i++) {
+      segments[i].fan.tick();
+      segments[i].breadthTween.tick();
+    }
+    
+    // then update the values
+    for (int i=0; i < segments.size(); i++) {
+      segments[i].update();
+    }
+    
+    if (selectedSlice != null) {
+      float offset = targetAngle-((selectedSlice.angleStart+selectedSlice.angleStop) / 2);
+      
+      if (Math.abs(offset)>EPSILON) {
+        float targetAdjustment = this.angleAdjustment+offset;
+        if (targetAdjustment<0) {
+          targetAdjustment = TWO_PI - targetAdjustment;
+        }
+      
+        this.angleAdjustment = targetAdjustment;
+      }
+    }
+    
+    // recalc again if angleAdjustment is needed.
+    if (angleAdjustment>0) {
+      this.angleOffset = this.angleAdjustment;
+      for (int i=0; i < segments.size(); i++) {
+        segments[i].update();
+      }
+    }
+  }
+  
+  /* this method is probably called to often. 
+  /* maybe that's what slows down the expand/contract tweening */
+  public float totalWeight() {
+    float sum = 0.0;
+    for (int i=0; i < segments.size(); i++) {
+      sum += segments[i].weight*segments[i].share();
+    }
+    return sum;
+  }
+  
+  public float totalSlices() {
+    int sum = 0;
+    for (int i=0; i < segments.size(); i++) {
+      sum += segments[i].slices.size();
+    }
+    return sum;
+  }
+  
+  public void draw() {
+    noStroke();
+		
+		// spacer
+    fill(DONUT_BACKGROUND);
+    ellipse(this.x, this.y, (radius+STROKE_WEIGHT_COLLAPSED/2+OUTER_BORDER)*2, (radius+STROKE_WEIGHT_COLLAPSED/2+OUTER_BORDER)*2);
+    
+		// draw attributes
+		for (int i = 0 ; i < segments.size(); i++) {
+			segments[i].draw();
+		}
+  }
+  
+  public void addSegment(DonutSegment s) {
+    if (colorCount==0)
+      setSelectedSlice(s.slices[0]);
+    s.col = colors[colorCount%11]; // assign a color
+    segments.add(s);
+    colorCount += 2;
+  }
+}
+
+Donut donut;
+
+
+void setup() {
+  size(550, 550);
+  
+  DonutSegment seg;
+  
+  donut = new Donut(275, 275);
+  
+  // populate with some data
+  seg = new DonutSegment("Disco", donut);
+  seg.addSlice(new DonutSlice("1", "Cosmic disco", seg));
+  seg.addSlice(new DonutSlice("2", "Eurobeat", seg));
+  seg.addSlice(new DonutSlice("3", "Eurodance", seg));
+  seg.addSlice(new DonutSlice("4", "Italo dance", seg));
+  seg.addSlice(new DonutSlice("5", "Nu-disco", seg));
+  donut.addSegment(seg);
+  
+  seg = new DonutSegment("Electro", donut);
+  seg.addSlice(new DonutSlice("6", "Electro backbeat", seg));
+  seg.addSlice(new DonutSlice("7", "Electro-hop", seg));
+  seg.addSlice(new DonutSlice("8", "Electro-grime", seg));
+  seg.addSlice(new DonutSlice("9", "Techno bass", seg));
+  donut.addSegment(seg);
+  
+  seg = new DonutSegment("House", donut);
+  seg.addSlice(new DonutSlice("10", "Acid House", seg));
+  seg.addSlice(new DonutSlice("11", "Deep House", seg));
+  seg.addSlice(new DonutSlice("12", "Electro House", seg));
+  seg.addSlice(new DonutSlice("13", "Progressive House", seg));
+  seg.addSlice(new DonutSlice("14", "Scouse House", seg));
+  seg.addSlice(new DonutSlice("15", "Tribal House", seg));
+  seg.addSlice(new DonutSlice("16", "Tech House", seg));
+  donut.addSegment(seg);
+  
+  seg = new DonutSegment("Techno", donut);
+  seg.addSlice(new DonutSlice("17", "Acid Techno", seg));
+  seg.addSlice(new DonutSlice("18", "Detroit Techno", seg));
+  seg.addSlice(new DonutSlice("19", "Free Tekno", seg));
+  seg.addSlice(new DonutSlice("20", "Minimal", seg));
+  seg.addSlice(new DonutSlice("21", "Schranz", seg));
+  seg.addSlice(new DonutSlice("22", "Tech Trance", seg));
+  seg.addSlice(new DonutSlice("23", "Techstep", seg));
+  
+  donut.addSegment(seg);
+  
+  seg = new DonutSegment("Drum&Bass", donut);
+  seg.addSlice(new DonutSlice("24", "Clownstep", seg));
+  seg.addSlice(new DonutSlice("25", "Darkcore", seg));
+  seg.addSlice(new DonutSlice("26", "Darkstep", seg));
+  seg.addSlice(new DonutSlice("27", "Drumfunk", seg));
+  seg.addSlice(new DonutSlice("28", "Hardstep", seg));
+  seg.addSlice(new DonutSlice("29", "Jump-Up", seg));
+  
+  seg.addSlice(new DonutSlice("30", "Liquid funk", seg));
+  seg.addSlice(new DonutSlice("31", "Neurofunk", seg));
+  seg.addSlice(new DonutSlice("32", "Oldschool jungle", seg));
+  seg.addSlice(new DonutSlice("33", "Techstep", seg));
+  seg.addSlice(new DonutSlice("34", "Trancestep", seg));        
+  
+  donut.addSegment(seg);
+}
+
+void draw() {
+  background(BACKGROUND);
+  frameRate(30);
+  donut.update();
+  donut.draw();
+  stroke(0);
+  fill(0);
+  
+  pushMatrix();
+  popMatrix();
+}
+
+void mouseMoved() {  
+  for (int i=0; i < donut.segments.size(); i++) {
+    for (int j=0; j < donut.segments[i].slices.size(); j++) {
+      donut.segments[i].slices[j].checkSelected();
+    }
+  }
+}
