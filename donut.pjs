@@ -139,7 +139,7 @@ public class DonutSlice {
        fill(LABEL_COLOR);
 
      pushMatrix();
-     if (theta > PI/2 && theta < (PI+PI/2)+0.04) {
+     if (theta > PI/2 && theta < (PI+PI/2)-0.05) {
        rotate(PI);
      }
      curContext.fillText(this.name, 0, 0);
